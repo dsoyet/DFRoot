@@ -73,6 +73,12 @@ final class ViolinSupport {
         boolean listenerReady;
         try { listenerReady = boot.equals(read(new File(directory(context), "listener.boot"))); }
         catch (Exception e) { listenerReady = false; }
+        // The native parent writes ready.boot just before its listener child starts.
+        for (int i = 0; !listenerReady && i < 20; i++) {
+            Thread.sleep(50);
+            try { listenerReady = boot.equals(read(new File(directory(context), "listener.boot"))); }
+            catch (Exception ignored) { }
+        }
         if (!listenerReady) {
             String binary = new File(context.getApplicationInfo().nativeLibraryDir, "libbootstrap.so").getAbsolutePath();
             String quoted = "'" + binary.replace("'", "'\\''") + "' --violin-list";

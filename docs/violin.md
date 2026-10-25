@@ -13,7 +13,9 @@ missing manager-discovery event: KernelSU displayed Not installed until its
 official APK was reinstalled over itself. Version violin2 adds that step after
 daemon initialization, checking the installed APK hash again and preserving its
 data. The repair was verified live; the complete updated flow still needs a
-fresh-boot device test. Do not enable automatic boot execution;
+fresh-boot device test. Version **4.8** merges restoration and list preparation
+into the original **Launch Root** button and restores the upstream main layout.
+Do not enable automatic boot execution;
 the violin code path disables it, along with soft reboot and partition changes.
 
 ## Use
@@ -23,7 +25,7 @@ the violin code path disables it, along with soft reboot and partition changes.
    need to be manually removed first. No installer automatically removes apps.
 2. Install the unmodified official KernelSU **v3.1.0 (32302)** manager. Both version
    and APK hash are checked. Other managers and v3.3.1 are rejected on violin.
-3. Select KernelSU in DFRoot and tap **Restore violin Root (3.1.0)**.
+3. Select KernelSU in DFRoot and tap **Launch Root**.
    The existing DFRoot entry chain prepares privileged execution; the new
    bootstrap resolves symbols locally for this boot, validates and patches the
    module, loads it once, and initializes the matching daemon. It then reinstalls
@@ -31,11 +33,13 @@ the violin code path disables it, along with soft reboot and partition changes.
    `pm install -r` in the shell security domain. This preserves manager data and
    triggers KernelSU 3.1.0's package observer to recognize the manager. Running
    `boot-completed` alone does not perform that scan.
-4. After successful initialization, tap **Repair app list / Open KernelSU** and
-   open the manager's **Superuser** tab immediately. A bounded helper starts the
+4. After successful initialization, the same action automatically prepares the
+   list helper and opens KernelSU. Open the manager's **Superuser** tab. A bounded helper starts the
    official manager's list service in the working shell security domain and
    system mount namespace. The four connection attempts form a short repair
-   window; if needed, return to DFRoot and tap Repair again.
+   window; if needed, return to DFRoot and tap **Launch Root** again. A successful
+   same-boot initialization skips the entry chain and module loading, and only
+   repeats list preparation. Failed initialization still prevents module retries.
 5. Grant Root to individual apps in KernelSU. For an explicit check, authorize
    Shell and run `su -c id` from an ADB shell; UID 0 is the success criterion.
    Module initialization is reported separately from application authorization.
@@ -43,7 +47,7 @@ the violin code path disables it, along with soft reboot and partition changes.
 The list helper accepts only a fixed repair request from DFRoot's private data
 directory. It performs no arbitrary requested command and exits after its
 bounded 30-minute session. Authorize DFRoot itself in KernelSU after the first
-successful recovery: the Repair button can then use that normal authorization
+successful recovery: the same Launch Root button can then use that normal authorization
 to restart an expired list helper, without an exploit or module reload.
 
 ## Reboot and factory reset
@@ -67,8 +71,9 @@ An OTA or security fix may invalidate this method; a different kernel is blocked
 - `kptr_restrict` is restored after symbol capture, including dump failures.
 - All real symbol addresses and device logs remain on the device. Actions only
   receives source code, official payload downloads and synthetic host tests.
-- **Show local recovery logs** reads bootstrap and helper logs without uploading
-  them. Kernel logs and kallsyms remain in DFRoot's private `violin/<boot-id>/`
+- Initialization logs appear in the original output area; errors also append the
+  local bootstrap/helper logs. No additional buttons are shown. Kernel logs and
+  kallsyms remain in DFRoot's private `violin/<boot-id>/`
   directory. They are not included in Actions artifacts.
 
 The class name `p7.d` is specific to the hash-checked official 3.1.0 APK. The
