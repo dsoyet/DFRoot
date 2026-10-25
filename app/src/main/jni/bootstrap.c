@@ -19,10 +19,10 @@ static int pref_true(const char *buf, const char *key)
 {
     char needle[64];
     snprintf(needle, sizeof(needle), "name=\"%s\"", key);
-    char *p = strstr(buf, needle);
+    const char *p = strstr(buf, needle);
     if (!p) return 0;
-    char *tag_end = strchr(p, '>');
-    char *v = strstr(p, "value=\"true\"");
+    const char *tag_end = strchr(p, '>');
+    const char *v = strstr(p, "value=\"true\"");
     return v && tag_end && v < tag_end;
 }
 
