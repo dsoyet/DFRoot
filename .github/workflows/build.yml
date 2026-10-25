@@ -2,13 +2,22 @@ name: Build
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, codex/violin-ksu310]
     tags: ['v*']
   pull_request:
     branches: [master, main]
   workflow_dispatch:
 
 jobs:
+  validate-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test strict ELF patcher
+        run: python3 -m unittest discover -s tests -v
+      - name: Check bootstrap C sources
+        run: cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -fsyntax-only app/src/main/jni/bootstrap.c app/src/main/jni/violin.c app/src/main/jni/violin_patch.c
+
   build-lkms:
     name: LKMs / ${{ matrix.kmi }}
     runs-on: ubuntu-latest
@@ -27,7 +36,7 @@ jobs:
       image: ghcr.io/ylarod/ddk-min:${{ matrix.kmi }}-20260828
       options: --privileged
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Build dfroot.ko
         run: |
@@ -44,66 +53,79 @@ jobs:
           make clean
 
       - name: Upload dfroot.ko
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: df-lkm-${{ matrix.kmi }}
           path: out/dfroot-${{ matrix.kmi }}.ko
 
   build-dfroot:
-    needs: build-lkms
+    needs: [build-lkms, validate-native]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Validate signing config
-        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
         run: |
-          if [ "${{ secrets.KEYSTORE }}" = "" ]; then
-            echo "::error::Signing secrets not configured. KEYSTORE secret is required for release builds."
-            exit 1
+          if [ -z "$KEYSTORE" ]; then
+            echo "No release signing secrets: building an installable debug APK."
           fi
 
       - name: Create signing.properties
-        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          if [ -z "$KEYSTORE" ]; then exit 0; fi
           echo KEYSTORE_FILE=../keystore.jks > signing.properties
-          echo KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }} >> signing.properties
-          echo KEY_ALIAS=${{ secrets.KEY_ALIAS }} >> signing.properties
-          echo KEY_PASSWORD=${{ secrets.KEY_PASSWORD }} >> signing.properties
-          echo ${{ secrets.KEYSTORE }} | base64 --decode > keystore.jks
+          printf 'KEYSTORE_PASSWORD=%s\nKEY_ALIAS=%s\nKEY_PASSWORD=%s\n' "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" >> signing.properties
+          printf '%s' "$KEYSTORE" | base64 --decode > keystore.jks
 
       - name: Download DF LKMs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           pattern: df-lkm-*
           merge-multiple: true
           path: app/src/main/jni/ko/
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+
+      - name: Fetch and verify pinned KernelSU 3.1.0 payloads
+        run: python3 scripts/fetch-violin-payloads.py
 
       - name: Build DFRoot APK
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ./gradlew :app:assembleDebug
+          chmod +x gradlew
+          if [ ! -f signing.properties ]; then
+            ./gradlew :app:assembleDebug --stacktrace
           else
-            ./gradlew :app:assembleRelease
+            ./gradlew :app:assembleRelease --stacktrace
           fi
 
       - name: Upload DFRoot APK
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: DFRoot
+          if-no-files-found: error
           path: |
             app/build/outputs/apk/release/DFRoot_*.apk
             app/build/outputs/apk/debug/DFRoot_*.apk
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && hashFiles('signing.properties') != ''
         uses: softprops/action-gh-release@v1
         with:
           files: app/build/outputs/apk/release/DFRoot_*.apk

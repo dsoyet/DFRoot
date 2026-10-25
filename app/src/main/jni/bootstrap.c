@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "violin.h"
 
 #define BLKROSET   0x125d
 #define KSUD_STAGE "/data/user_de/0/df.root/ksud"
@@ -206,6 +207,13 @@ int main(void)
     touch("/dev/dfm2");
     if (adopt_zygote_env())
         touch("/dev/dfmw0");
+
+    /* The verified violin kernel cannot use upstream 3.3.1 late-load. */
+    if (violin_device()) {
+        int rc = strcmp(su_manager, "me.weishu.kernelsu") ? 1 : violin_bootstrap();
+        touch(rc ? "/dev/dfme2" : "/dev/dfm6");
+        return rc;
+    }
 
     touch("/dev/dfm3");
     if (set_partitions_ro())

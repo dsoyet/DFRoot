@@ -11,6 +11,7 @@ if (signingPropsFile.exists()) signingProps.load(signingPropsFile.inputStream())
 android {
     namespace = "df.root"
     compileSdk = 37
+    ndkVersion = "29.0.14206865"
 
     buildFeatures {
         buildConfig = true
@@ -20,8 +21,8 @@ android {
         applicationId = "df.root"
         minSdk = 32
         targetSdk = 37
-        versionCode = 407
-        versionName = "4.7"
+        versionCode = 408
+        versionName = "4.7-violin1"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -30,10 +31,12 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(signingProps.getProperty("KEYSTORE_FILE"))
-            storePassword = signingProps.getProperty("KEYSTORE_PASSWORD")
-            keyAlias = signingProps.getProperty("KEY_ALIAS")
-            keyPassword = signingProps.getProperty("KEY_PASSWORD")
+            if (signingPropsFile.exists()) {
+                storeFile = file(signingProps.getProperty("KEYSTORE_FILE"))
+                storePassword = signingProps.getProperty("KEYSTORE_PASSWORD")
+                keyAlias = signingProps.getProperty("KEY_ALIAS")
+                keyPassword = signingProps.getProperty("KEY_PASSWORD")
+            }
         }
     }
 

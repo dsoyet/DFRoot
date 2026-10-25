@@ -33,6 +33,20 @@
 
     </LinearLayout>
 
+    <Button
+        android:id="@+id/btnRepairList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:text="Repair app list / Open KernelSU" />
+
+    <Button
+        android:id="@+id/btnViolinLogs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:text="Show local recovery logs" />
+
     <ScrollView
         android:id="@+id/outputScroll"
         android:layout_width="match_parent"

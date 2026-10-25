@@ -30,3 +30,5 @@ lkm/Module.symvers
 out/
 app/src/main/jni/splicehelper
 app/src/main/jni/ko/*.ko
+app/src/main/assets/violin/kernelsu310.ko
+app/src/main/assets/violin/ksud310

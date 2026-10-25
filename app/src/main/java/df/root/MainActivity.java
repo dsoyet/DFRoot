@@ -62,6 +62,17 @@ public class MainActivity extends Activity implements IReporter {
         getActionBar().setSubtitle("@diabl0w github/xda");
 
         btnRun = findViewById(R.id.btnRun);
+        Button repair = findViewById(R.id.btnRepairList);
+        Button logs = findViewById(R.id.btnViolinLogs);
+        repair.setVisibility(ViolinSupport.isViolin() ? View.VISIBLE : View.GONE);
+        logs.setVisibility(ViolinSupport.isViolin() ? View.VISIBLE : View.GONE);
+        repair.setOnClickListener(v -> {
+            try {
+                ViolinSupport.repairList(mDeCtx);
+                Toast.makeText(this, "Open Superuser within 60 seconds, then authorize the apps you need", Toast.LENGTH_LONG).show();
+            } catch (Exception e) { report("List repair: " + e.getMessage() + "\n"); }
+        });
+        logs.setOnClickListener(v -> report(ViolinSupport.logs(mDeCtx)));
         outputScroll = findViewById(R.id.outputScroll);
         outputView = findViewById(R.id.outputView);
         spinnerSuManager = findViewById(R.id.spinnerSuManager);
@@ -132,11 +143,17 @@ public class MainActivity extends Activity implements IReporter {
 
     private void updateRunButton() {
         btnRun.setEnabled(mValidSuManagerPos >= 1 && !new File("/dev/df").exists());
+        if (ViolinSupport.isViolin()) btnRun.setText("Restore violin Root (3.1.0)");
     }
 
     private void runExploit() {
         try {
             int rc = ExploitRunner.run(mDeCtx, this);
+            if (ViolinSupport.isViolin()) {
+                report(rc == 0 ? "\nKernelSU initialized. Tap Repair app list, open Superuser, then grant apps Root.\n"
+                        : "\nStopped. Read local logs. Do not repeat loading this boot.\n");
+                return;
+            }
             String msg = rc == 0 ? "DFRoot: SUCCESS"
                        : rc == 1 ? "DFRoot: Error - ksud nonzero exit"
                        : rc == 2 ? "DFRoot: Error - check logcat & dmesg"

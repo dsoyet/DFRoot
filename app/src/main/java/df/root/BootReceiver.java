@@ -18,6 +18,10 @@ public class BootReceiver extends BroadcastReceiver implements IReporter {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (ViolinSupport.isViolin()) {
+            Log.i(TAG, "violin adaptation: automatic boot execution is disabled; launch manually");
+            return;
+        }
         if (new File("/dev/df").exists()) {
             Log.i(TAG, "boot: already hooked, skipping");
             return;
