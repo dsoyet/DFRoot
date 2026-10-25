@@ -1,31 +1,42 @@
 #pragma once
-/* Runtime equivalent of tiann/KernelSU v3.1.0 kernel/selinux/rules.c,
- * apply_kernelsu_rules(). Wildcards below are upstream's root-domain baseline,
- * never an unrestricted allow * * * *. No policy file is persisted/loaded. */
-static const char violin_ksu_base_policy[] =
-    "permissive su\n"
-    "typeattribute su mlstrustedsubject\n"
-    "typeattribute su netdomain\n"
-    "typeattribute su bluetoothdomain\n"
-    "type ksu_file file_type\n"
-    "typeattribute ksu_file mlstrustedobject\n"
-    "allow * ksu_file * *\n"
-    "allow su * * *\n"
-    "allowxperm su * blk_file ioctl 0x0000-0xffff\n"
-    "allowxperm su * fifo_file ioctl 0x0000-0xffff\n"
-    "allowxperm su * chr_file ioctl 0x0000-0xffff\n"
-    "allowxperm su * file ioctl 0x0000-0xffff\n"
-    "allow init su * *\n"
-    "allow servicemanager su dir { search read }\n"
-    "allow servicemanager su file { open read }\n"
-    "allow servicemanager su process getattr\n"
-    "allow * su process sigchld\n"
-    "allow logd su dir search\n"
-    "allow logd su file { read open getattr }\n"
-    "allow * su fd use\n"
-    "allow * su fifo_file { write read open getattr }\n"
-    "allow hwservicemanager su dir search\n"
-    "allow hwservicemanager su file { read open }\n"
-    "allow hwservicemanager su process getattr\n"
-    "allow * su binder *\n"
-    "allow system_server su process { getpgid sigkill }\n";
+#include <stdint.h>
+/* Atomic v3.1.0 apply_kernelsu_rules() baseline. Direct ioctls avoid the
+ * upstream CLI allowxperm prefix-parser bug; every ioctl must succeed. */
+struct violin_policy_rule { uint32_t cmd, subcmd; const char *args[5]; };
+static const struct violin_policy_rule violin_ksu_base_policy[] = {
+    {3, 1, {"su", NULL, NULL, NULL, NULL}},
+    {5, 0, {"su", "mlstrustedsubject", NULL, NULL, NULL}},
+    {5, 0, {"su", "netdomain", NULL, NULL, NULL}},
+    {5, 0, {"su", "bluetoothdomain", NULL, NULL, NULL}},
+    {4, 0, {"ksu_file", "file_type", NULL, NULL, NULL}},
+    {5, 0, {"ksu_file", "mlstrustedobject", NULL, NULL, NULL}},
+    {1, 1, {NULL, "ksu_file", NULL, NULL, NULL}},
+    {1, 1, {"su", NULL, NULL, NULL, NULL}},
+    {2, 1, {"su", NULL, "blk_file", "ioctl", "0x0000-0xffff"}},
+    {2, 1, {"su", NULL, "fifo_file", "ioctl", "0x0000-0xffff"}},
+    {2, 1, {"su", NULL, "chr_file", "ioctl", "0x0000-0xffff"}},
+    {2, 1, {"su", NULL, "file", "ioctl", "0x0000-0xffff"}},
+    {1, 1, {"init", "su", NULL, NULL, NULL}},
+    {1, 1, {"servicemanager", "su", "dir", "search", NULL}},
+    {1, 1, {"servicemanager", "su", "dir", "read", NULL}},
+    {1, 1, {"servicemanager", "su", "file", "open", NULL}},
+    {1, 1, {"servicemanager", "su", "file", "read", NULL}},
+    {1, 1, {"servicemanager", "su", "process", "getattr", NULL}},
+    {1, 1, {NULL, "su", "process", "sigchld", NULL}},
+    {1, 1, {"logd", "su", "dir", "search", NULL}},
+    {1, 1, {"logd", "su", "file", "read", NULL}},
+    {1, 1, {"logd", "su", "file", "open", NULL}},
+    {1, 1, {"logd", "su", "file", "getattr", NULL}},
+    {1, 1, {NULL, "su", "fd", "use", NULL}},
+    {1, 1, {NULL, "su", "fifo_file", "write", NULL}},
+    {1, 1, {NULL, "su", "fifo_file", "read", NULL}},
+    {1, 1, {NULL, "su", "fifo_file", "open", NULL}},
+    {1, 1, {NULL, "su", "fifo_file", "getattr", NULL}},
+    {1, 1, {"hwservicemanager", "su", "dir", "search", NULL}},
+    {1, 1, {"hwservicemanager", "su", "file", "read", NULL}},
+    {1, 1, {"hwservicemanager", "su", "file", "open", NULL}},
+    {1, 1, {"hwservicemanager", "su", "process", "getattr", NULL}},
+    {1, 1, {NULL, "su", "binder", NULL, NULL}},
+    {1, 1, {"system_server", "su", "process", "getpgid", NULL}},
+    {1, 1, {"system_server", "su", "process", "sigkill", NULL}},
+};

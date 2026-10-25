@@ -61,10 +61,14 @@ Source references:
 
 Version **4.8.2** restores **global Enforcing** after daemon/manager setup. The
 entry still temporarily uses Permissive while loading; it then replays the
-KernelSU **3.1.0** `apply_kernelsu_rules()` baseline via the pinned daemon. This
+KernelSU **3.1.0** `apply_kernelsu_rules()` baseline through its version-checked
+policy ioctl interface, requiring success from every atomic rule. This
 includes su's permissive flag, attributes, ksu_file, ioctls, and incoming Binder/
 FD rules; it is not `allow * * * *` and does not mark ordinary app domains
 permissive. The upstream policy is embedded in `violin_ksu_policy.h`.
+Direct ioctl submission avoids a 3.1.0 CLI bug that parses `allowxperm` as an
+ordinary `allow` prefix. Permission ordinals from selinuxfs are converted to
+bitmasks before checking actual access decisions.
 
 Before enforcing, raw access decisions must contain actual allow bits for app,
 shell and system_server Binder/FD access to su. A nonpermissive untrusted_app

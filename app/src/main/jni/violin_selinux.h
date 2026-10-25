@@ -17,6 +17,10 @@ static inline int violin_status_valid(const struct violin_selinux_status *s, siz
 static inline int violin_explicit_access(uint32_t allowed, uint32_t requested) {
     return requested && (allowed & requested) == requested;
 }
+/* selinuxfs perms files contain one-based permission ordinals, not bitmasks. */
+static inline uint32_t violin_permission_mask(uint32_t ordinal) {
+    return ordinal >= 1 && ordinal <= 32 ? UINT32_C(1) << (ordinal - 1) : 0;
+}
 
 /* Security server av_decision flags: SELINUX_AVD_FLAGS_PERMISSIVE = 1.
  * An allow bit alone is insufficient to prove the su-domain patch succeeded. */

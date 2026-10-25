@@ -26,6 +26,12 @@ int main(void) {
     assert(!violin_explicit_access(1, 3));
     assert(!violin_explicit_access(0xffffffff, 0));
     assert(violin_explicit_access(3, 3));
+    assert(violin_permission_mask(22) == 0x200000);
+    assert(violin_permission_mask(1) == 1);
+    assert(violin_permission_mask(2) == 2);
+    assert(violin_permission_mask(32) == 0x80000000);
+    assert(!violin_permission_mask(0));
+    assert(!violin_permission_mask(33));
     s.enforcing = 0; s.sequence = 3;
     assert(!violin_status_valid(&s, sizeof(s)));
     s.sequence = 4; s.version = 2;

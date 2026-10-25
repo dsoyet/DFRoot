@@ -6,6 +6,7 @@
 #include "violin_selinux.h"
 #include "violin_watchdog.h"
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <stdint.h>
@@ -13,7 +14,51 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
 #include <unistd.h>
+
+static int apply_baseline(void) {
+    int driver = -1;
+    DIR *dir = opendir("/proc/self/fd");
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir))) {
+            char path[96], target[128];
+            snprintf(path, sizeof(path), "/proc/self/fd/%.24s", entry->d_name);
+            ssize_t n = readlink(path, target, sizeof(target) - 1);
+            if (n <= 0) continue;
+            target[n] = 0;
+            if (strstr(target, "[ksu_driver]")) {
+                driver = fcntl(atoi(entry->d_name), F_DUPFD_CLOEXEC, 0); break;
+            }
+        }
+        closedir(dir);
+    }
+    if (driver < 0) {
+        /* Official KSU fd-install handshake, NOT a reboot: both magic values
+         * are invalid Linux reboot magic. Without KSU the syscall fails EINVAL. */
+        syscall(__NR_reboot, 0xDEADBEEFUL, 0xCAFEBABEUL, 0, &driver);
+        if (driver >= 0) fcntl(driver, F_SETFD, FD_CLOEXEC);
+    }
+    if (driver < 0) return -1;
+    struct { uint32_t version, flags, features; } info = {0};
+    if (ioctl(driver, _IOC(_IOC_READ, 'K', 2, 0), &info) || info.version != 32302) {
+        close(driver); return -1;
+    }
+    struct { uint32_t cmd, subcmd; const char *args[7]; } policy = {0};
+    struct { uint64_t cmd, arg; } request = {0, (uint64_t)(uintptr_t)&policy};
+    for (size_t i = 0; i < sizeof(violin_ksu_base_policy) / sizeof(*violin_ksu_base_policy); i++) {
+        const struct violin_policy_rule *rule = &violin_ksu_base_policy[i];
+        policy.cmd = rule->cmd; policy.subcmd = rule->subcmd;
+        memcpy(policy.args, rule->args, sizeof(rule->args));
+        if (ioctl(driver, _IOC(_IOC_READ | _IOC_WRITE, 'K', 4, 0), &request)) {
+            printf("STOP: baseline ioctl %zu cmd=%u failed errno=%d\n", i, rule->cmd, errno);
+            close(driver); return -1;
+        }
+    }
+    close(driver); puts("KernelSU 3.1.0 atomic baseline: every ioctl succeeded"); return 0;
+}
 
 static int number(const char *path, uint32_t *out) {
     char text[48], *end;
@@ -49,7 +94,8 @@ static int access_decision(const char *source, const char *target, const char *k
     snprintf(path, sizeof(path), "/sys/fs/selinux/class/%s/index", klass);
     if (number(path, &cls)) return -1;
     snprintf(path, sizeof(path), "/sys/fs/selinux/class/%s/perms/%s", klass, permission);
-    if (number(path, &mask) || !mask) return -1;
+    if (number(path, &mask) || !violin_permission_mask(mask)) return -1;
+    mask = violin_permission_mask(mask);
     int size = snprintf(request, sizeof(request), "%s %s %u %x", source, target, cls, mask);
     if (size < 0 || (size_t)size >= sizeof(request)) return -1;
     int fd = open("/sys/fs/selinux/access", O_RDWR | O_CLOEXEC);
@@ -101,9 +147,8 @@ static int health(violin_run_command run) {
 }
 int violin_restore_enforcing(const char *ksud, violin_run_command run) {
     if (getuid() != 0 || synchronized_mode(0)) return -1;
-    if (run((char *[]){(char *)ksud, "sepolicy", "check", (char *)violin_ksu_base_policy, NULL}, NULL, 0, 15) ||
-        run((char *[]){(char *)ksud, "sepolicy", "patch", (char *)violin_ksu_base_policy, NULL}, NULL, 0, 30) ||
-        preflight()) { puts("STOP: enforcing policy preflight failed; remaining Permissive"); return -1; }
+    (void)ksud;
+    if (apply_baseline() || preflight()) { puts("STOP: enforcing policy preflight failed; remaining Permissive"); return -1; }
     /* The supervisor and watchdog must be in su, not init/shell, before enforcing.
      * Keeping an independent su child and preopened rollback FD prevents losing
      * rollback when the parent exits, hangs, or an exec/health check fails. */
