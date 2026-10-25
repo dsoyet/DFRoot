@@ -8,9 +8,12 @@ It is restricted to the kernel below:
 6.6.77-android15-8-g561b227c0e7d-abogki425270610-4k
 ```
 
-This is an experimental integration of previously tested manual recovery steps.
-Successful compilation does **not** establish that this version of DFRoot's
-DirtyFrag entry chain works on violin. Do not enable automatic boot execution;
+The first device test confirmed module loading and UID 0 access, but exposed a
+missing manager-discovery event: KernelSU displayed Not installed until its
+official APK was reinstalled over itself. Version violin2 adds that step after
+daemon initialization, checking the installed APK hash again and preserving its
+data. The repair was verified live; the complete updated flow still needs a
+fresh-boot device test. Do not enable automatic boot execution;
 the violin code path disables it, along with soft reboot and partition changes.
 
 ## Use
@@ -23,7 +26,11 @@ the violin code path disables it, along with soft reboot and partition changes.
 3. Select KernelSU in DFRoot and tap **Restore violin Root (3.1.0)**.
    The existing DFRoot entry chain prepares privileged execution; the new
    bootstrap resolves symbols locally for this boot, validates and patches the
-   module, loads it once, and initializes the matching daemon.
+   module, loads it once, and initializes the matching daemon. It then reinstalls
+   the already installed, hash-checked official manager over itself using
+   `pm install -r` in the shell security domain. This preserves manager data and
+   triggers KernelSU 3.1.0's package observer to recognize the manager. Running
+   `boot-completed` alone does not perform that scan.
 4. After successful initialization, tap **Repair app list / Open KernelSU** and
    open the manager's **Superuser** tab immediately. A bounded helper starts the
    official manager's list service in the working shell security domain and

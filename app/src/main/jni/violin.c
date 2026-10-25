@@ -26,6 +26,7 @@
 #define KERNEL "6.6.77-android15-8-g561b227c0e7d-abogki425270610-4k"
 #define KO_HASH "48afa2e0c7ce6b310bd2885c99e0a3276672f3c7fa2f597a011610fd9c989fb3"
 #define KSUD_HASH "3c4da894bf2f0a09b5e666d1bb52ab346225e804260713f9fa635c4b52867b46"
+#define MANAGER_HASH "480c52b8e8caf65a25f927028ff50e50c4fb5a762ea361406d6d6992233e3b31"
 
 /* Fixed argument vectors only: no app-supplied shell command is executed. */
 static int command(char *const args[], char *output, size_t capacity, int seconds) {
@@ -124,6 +125,23 @@ static int directory_has_entries(const char *path) {
     struct dirent *e; int found = 0;
     while ((e = readdir(d))) if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) { found = 1; break; }
     closedir(d); return found;
+}
+static int refresh_manager(void) {
+    char result[1024];
+    if (command((char *[]){"/system/bin/runcon", "u:r:shell:s0", "/system/bin/pm",
+        "path", "me.weishu.kernelsu", NULL}, result, sizeof(result), 15)) return -1;
+    /* Only reinstall the already installed, pinned official manager. No download,
+       data clearing, downgrade, or direct packages.list modification. */
+    result[strcspn(result, "\r\n")] = 0;
+    if (strncmp(result, "package:/data/app/", 18)) return -1;
+    char *apk = result + strlen("package:");
+    if (!hash_matches(apk, MANAGER_HASH)) return -1;
+    int rc = command((char *[]){"/system/bin/runcon", "u:r:shell:s0", "/system/bin/pm",
+        "install", "-r", apk, NULL}, NULL, 0, 60);
+    printf("Refresh manager package (preserve data) exit=%d\n", rc);
+    /* KernelSU 3.1.0 observes packages.list CREATE/MOVE to discover its manager.
+       boot-completed calls track_throne(true), which does not discover one. */
+    return rc;
 }
 static void repair_list(void) {
     struct stat manager, jar;
@@ -250,7 +268,8 @@ int violin_bootstrap(void) {
         int rc = command((char *[]){KSUD, (char *)stages[i], NULL}, NULL, 0, 60);
         printf("ksud %s exit=%d\n", stages[i], rc); if (rc) return 1;
     }
-    write_text(BASE "/ready.boot", boot);
+    if (refresh_manager()) { puts("STOP: manager package refresh failed"); return 1; }
+    if (write_text(BASE "/ready.boot", boot)) return 1;
     list_listener(boot);
     puts("KernelSU 32302 ready; open manager, repair list, then authorize apps");
     return 0;
