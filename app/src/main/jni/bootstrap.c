@@ -196,6 +196,8 @@ static int disable_modules(void)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--violin-enforce"))
+        return violin_enable_enforcing();
     if (argc == 2 && !strcmp(argv[1], "--violin-list")) {
         if (adopt_zygote_env()) return 1;
         return violin_resume_list();

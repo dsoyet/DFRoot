@@ -4,6 +4,7 @@
 #include "violin.h"
 #include "violin_patch.h"
 #include "violin_selinux.h"
+#include "violin_enforce.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -275,6 +276,17 @@ int violin_resume_list(void) {
         selinux_synchronized() || su_domain_ready()) return 1;
     list_listener(boot); return 0;
 }
+int violin_enable_enforcing(void) {
+    char boot[64], ready[64]; struct utsname u;
+    /* Allows testing/upgrading the already loaded pinned module without another
+     * exploit, module insertion, manager reinstall, or automatic reboot. */
+    if (getuid() != 0 || !violin_device() || uname(&u) || strcmp(u.release, KERNEL) ||
+        read_text("/proc/sys/kernel/random/boot_id", boot, sizeof(boot)) ||
+        read_text(BASE "/ready.boot", ready, sizeof(ready)) || strcmp(ready, boot) ||
+        !hash_matches(KSUD, KSUD_HASH) || kernel_version() != 32302 || su_domain_ready()) return 1;
+    if (violin_restore_enforcing(KSUD, command)) return 1;
+    return write_text(BASE "/enforcing-ready.boot", boot) ? 1 : 0;
+}
 int violin_bootstrap(void) {
     struct utsname u; char boot[64], path[512], kptr[32], same_boot[64];
     if (getuid() != 0 || uname(&u) || strcmp(u.release, KERNEL) || strcmp(u.machine, "aarch64") ||
@@ -342,8 +354,9 @@ int violin_bootstrap(void) {
         printf("ksud %s exit=%d\n", stages[i], rc); if (rc) return 1;
     }
     if (refresh_manager()) { puts("STOP: manager package refresh failed"); return 1; }
-    if (write_text(BASE "/binder-ready.boot", boot) || write_text(BASE "/ready.boot", boot)) return 1;
-    list_listener(boot);
-    puts("KernelSU 32302 ready; open manager, repair list, then authorize apps");
+    if (violin_restore_enforcing(KSUD, command)) return 1;
+    if (write_text(BASE "/enforcing-ready.boot", boot) ||
+        write_text(BASE "/binder-ready.boot", boot) || write_text(BASE "/ready.boot", boot)) return 1;
+    puts("KernelSU 32302 ready with global SELinux Enforcing; open manager to authorize apps");
     return 0;
 }

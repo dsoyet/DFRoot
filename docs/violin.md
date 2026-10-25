@@ -59,6 +59,29 @@ Source references:
 
 ## Use
 
+Version **4.8.2** restores **global Enforcing** after daemon/manager setup. The
+entry still temporarily uses Permissive while loading; it then replays the
+KernelSU **3.1.0** `apply_kernelsu_rules()` baseline via the pinned daemon. This
+includes su's permissive flag, attributes, ksu_file, ioctls, and incoming Binder/
+FD rules; it is not `allow * * * *` and does not mark ordinary app domains
+permissive. The upstream policy is embedded in `violin_ksu_policy.h`.
+
+Before enforcing, raw access decisions must contain actual allow bits for app,
+shell and system_server Binder/FD access to su. A nonpermissive untrusted_app
+sys_admin denial must remain. A separate su-context watchdog holds a preopened
+rollback descriptor and restores Permissive on parent exit, health failure or a
+45-second timeout. The parent checks package/activity/user, cmd package, status
+synchronization and a real UID-0/untrusted_app attempt to read adb data (must be
+denied). Only then is Enforcing committed. Su remains domain-permissive, matching
+KernelSU's baseline; global Enforcing is not a claim that every domain enforces.
+
+The normal list workaround is not launched under Enforcing. Its diagnostic code
+is retained. Runtime checks do not replace full app regression testing. An
+explicit root-only `libbootstrap.so --violin-enforce` path can upgrade an already
+initialized pinned 3.1.0 instance without reinserting the module or rebooting.
+It performs the same preflight/watchdog/health checks, and is not a general
+command execution endpoint. All runtime rules disappear on reboot.
+
 1. Back up personal data. Install the Actions-built DFRoot APK. A debug APK has a
    different signing identity from upstream DFRoot: an existing upstream APK may
    need to be manually removed first. No installer automatically removes apps.

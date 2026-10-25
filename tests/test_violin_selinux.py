@@ -18,6 +18,14 @@ int main(void) {
     assert(violin_status_valid(&s, sizeof(s)));
     s.sequence = 0; assert(violin_status_valid(&s, sizeof(s)));
     s.enforcing = 1; assert(!violin_status_valid(&s, sizeof(s)));
+    assert(violin_status_valid_mode(&s, sizeof(s), 1));
+    assert(!violin_status_valid_mode(&s, sizeof(s), 2));
+    assert(!violin_status_valid_mode(&s, sizeof(s), 0));
+    assert(!violin_explicit_access(0, 2));
+    assert(!violin_explicit_access(1, 2));
+    assert(!violin_explicit_access(1, 3));
+    assert(!violin_explicit_access(0xffffffff, 0));
+    assert(violin_explicit_access(3, 3));
     s.enforcing = 0; s.sequence = 3;
     assert(!violin_status_valid(&s, sizeof(s)));
     s.sequence = 4; s.version = 2;

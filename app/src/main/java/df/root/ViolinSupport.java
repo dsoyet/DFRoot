@@ -25,7 +25,8 @@ final class ViolinSupport {
         try {
             String boot = read(new File("/proc/sys/kernel/random/boot_id"));
             return boot.equals(read(new File(directory(context), "ready.boot")))
-                    && boot.equals(read(new File(directory(context), "binder-ready.boot")));
+                    && boot.equals(read(new File(directory(context), "binder-ready.boot")))
+                    && boot.equals(read(new File(directory(context), "enforcing-ready.boot")));
         }
         catch (Exception e) { return false; }
     }
@@ -73,6 +74,13 @@ final class ViolinSupport {
         validateManager(context, MANAGER);
         String boot = read(new File("/proc/sys/kernel/random/boot_id"));
         if (!ready(context)) throw new IllegalStateException("No successful recovery for this boot. Do not repeat module loading");
+        // Native list loading now works under the complete root-domain baseline.
+        // Keep the compatibility code for diagnosis, but do not launch a shell-
+        // context nsenter helper when global Enforcing is active.
+        if ("1".equals(read(new File("/sys/fs/selinux/enforce")))) {
+            openManager(context);
+            return;
+        }
         boolean listenerReady;
         try { listenerReady = boot.equals(read(new File(directory(context), "listener.boot"))); }
         catch (Exception e) { listenerReady = false; }
@@ -103,6 +111,9 @@ final class ViolinSupport {
         try (FileOutputStream out = new FileOutputStream(request)) { out.write(boot.getBytes(StandardCharsets.UTF_8)); }
         request.setReadable(false, false); request.setReadable(true, true);
         request.setWritable(false, false); request.setWritable(true, true);
+        openManager(context);
+    }
+    private static void openManager(Context context) throws Exception {
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(MANAGER);
         if (launch == null) throw new IllegalStateException("Manager launch activity missing");
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(launch);

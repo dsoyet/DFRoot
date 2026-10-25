@@ -16,7 +16,7 @@ jobs:
       - name: Test ELF rejection and SELinux status validation
         run: python3 -m unittest discover -s tests -v
       - name: Check bootstrap C sources
-        run: cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -fsyntax-only app/src/main/jni/bootstrap.c app/src/main/jni/violin.c app/src/main/jni/violin_patch.c
+        run: cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -fsyntax-only app/src/main/jni/bootstrap.c app/src/main/jni/violin.c app/src/main/jni/violin_patch.c app/src/main/jni/violin_enforce.c
 
   build-lkms:
     name: LKMs / ${{ matrix.kmi }}
