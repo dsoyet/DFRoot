@@ -10,7 +10,7 @@ if (signingPropsFile.exists()) signingProps.load(signingPropsFile.inputStream())
 
 android {
     namespace = "df.root"
-    compileSdk = 37
+    compileSdk = 36
     ndkVersion = "29.0.14206865"
 
     buildFeatures {
@@ -20,7 +20,7 @@ android {
     defaultConfig {
         applicationId = "df.root"
         minSdk = 32
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 408
         versionName = "4.7-violin1"
 
