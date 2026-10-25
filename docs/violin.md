@@ -18,6 +18,45 @@ into the original **Launch Root** button and restores the upstream main layout.
 Do not enable automatic boot execution;
 the violin code path disables it, along with soft reboot and partition changes.
 
+## 4.8.1 Binder initialization repair (device validation pending)
+
+Diagnosis found kernel `enforce=0` while the shared SELinux status page still
+reported `enforcing=1`. ServiceManager maps that page; its userspace AVC can
+retain enforcing behavior even when kernel checks are permissive. The entry
+module now resolves and calls `selinux_status_update_setenforce(false)` and
+`selnl_notify_setenforce(0)` after the existing state change. This uses the
+state-free Linux >= 6.4 ABI only; older kernel paths remain unchanged. No
+enforcing interval, direct status-page edit, or ServiceManager restart is used.
+
+Before loading KernelSU, violin validates a stable version-1 status snapshot
+against `/sys/fs/selinux/enforce`. A mismatch stops initialization. Once the
+pinned 3.1.0 module is loaded, the pinned daemon applies **only `permissive su`**,
+the first rule in upstream `apply_kernelsu_rules()`. This is a targeted repair
+of the demonstrated missing su-domain flag, not a replay of all early-boot
+initialization. No wildcard allow rules or persistent policy files are added.
+Since this ksud version can return zero even if applying a rule fails, the
+bootstrap independently queries `/sys/fs/selinux/access` and requires the live
+`SELINUX_AVD_FLAGS_PERMISSIVE` flag, then requires package/activity/user to be
+visible from UID 0 in `u:r:su:s0`. All checks precede the new ready marker.
+
+Install **4.8.1 over 4.8**, then manually reboot before testing Launch Root: a
+previously loaded entry module cannot be updated in place. Old ready markers
+alone no longer qualify as successful 4.8.1 initialization. The original
+single-button layout and list-service compatibility helper are retained until
+device regression testing establishes that the manager works without it.
+
+This change was prepared without connecting to the tablet. Compilation and
+offline tests do not prove Shizuku or InstallerX installation works. After the
+next boot, verify normal su service access, the KernelSU list without invoking
+the compatibility helper, Shizuku's normal Root start, and InstallerX Root and
+Shizuku installs separately, including their Session commit/result callbacks.
+
+Source references:
+- [Linux 6.6 status synchronization](https://github.com/torvalds/linux/blob/v6.6/security/selinux/status.c)
+- [Linux 6.6 setenforce notifications](https://github.com/torvalds/linux/blob/v6.6/security/selinux/selinuxfs.c)
+- [KernelSU 3.1.0 su-domain initialization](https://github.com/tiann/KernelSU/blob/v3.1.0/kernel/selinux/rules.c)
+- [KernelSU 3.1.0 non-strict CLI policy handling](https://github.com/tiann/KernelSU/blob/v3.1.0/userspace/ksud/src/sepolicy.rs)
+
 ## Use
 
 1. Back up personal data. Install the Actions-built DFRoot APK. A debug APK has a

@@ -4,6 +4,7 @@
 #include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/namei.h>
+#include <linux/version.h>
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("DFRoot LKM");
 
@@ -18,6 +19,31 @@ typedef void (*path_put_t)(const struct path *);
 typedef int  (*insn_patch_t)(void *addrs[], u32 insns[], int cnt);
 
 static insn_patch_t insn_patch_text;
+
+/* Linux >= 6.4 uses the state-free status-update ABI. Do not guess the ABI on
+ * older vendor kernels. The violin bootstrap requires matching status/enforce
+ * values before loading KernelSU, so missing symbols cannot silently succeed. */
+static void __nocfi sync_selinux_permissive(kallsyms_lookup_name_t get_addr)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+    void (*update_status)(bool);
+    void (*notify_enforce)(int);
+
+    update_status = (void *)get_addr("selinux_status_update_setenforce");
+    notify_enforce = (void *)get_addr("selnl_notify_setenforce");
+    if (!update_status || !notify_enforce) {
+        pr_err("dfroot: SELinux status/notification symbols missing\n");
+        return;
+    }
+    /* Updates sequence under the kernel's status_lock; never enable enforcing,
+     * edit the shared page directly, or restart servicemanager. */
+    update_status(false);
+    notify_enforce(0);
+    pr_info("dfroot: SELinux permissive status synchronized and notified\n");
+#else
+    (void)get_addr;
+#endif
+}
 
 static __nocfi void patch_fn_ret_zero(void *fn)
 {
@@ -102,6 +128,8 @@ static int __nocfi __init dfroot_init(void)
     }
     WRITE_ONCE(*selinux_state, false);
     pr_info("dfroot: selinux_state permissive\n");
+    if (!READ_ONCE(*selinux_state))
+        sync_selinux_permissive(get_addr);
 
     // Some kernels ship CONFIG_SECURITY_SELINUX_DEVELOP=n, so the selinux_state
     // write above is a no-op there — patch the SELinux checks themselves instead

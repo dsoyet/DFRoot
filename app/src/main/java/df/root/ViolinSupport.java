@@ -22,8 +22,11 @@ final class ViolinSupport {
         return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).trim();
     }
     static boolean ready(Context context) {
-        try { return read(new File(directory(context), "ready.boot"))
-                .equals(read(new File("/proc/sys/kernel/random/boot_id"))); }
+        try {
+            String boot = read(new File("/proc/sys/kernel/random/boot_id"));
+            return boot.equals(read(new File(directory(context), "ready.boot")))
+                    && boot.equals(read(new File(directory(context), "binder-ready.boot")));
+        }
         catch (Exception e) { return false; }
     }
     private static String sha256(InputStream in) throws Exception {

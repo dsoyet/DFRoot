@@ -3,6 +3,7 @@
 #endif
 #include "violin.h"
 #include "violin_patch.h"
+#include "violin_selinux.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -112,6 +113,74 @@ static int hash_matches(const char *path, const char *hash) {
     return command((char *[]){"/system/bin/sha256sum", (char *)path, NULL}, value, sizeof(value), 10) == 0 &&
         !strncmp(value, hash, 64) && value[64] == ' ';
 }
+static int selinux_synchronized(void) {
+    struct violin_selinux_status first, second;
+    int fd = open("/sys/fs/selinux/status", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    int valid = 0;
+    for (int i = 0; i < 20; i++) {
+        ssize_t a = pread(fd, &first, sizeof(first), 0);
+        ssize_t b = pread(fd, &second, sizeof(second), 0);
+        if (a == (ssize_t)sizeof(first) && b == (ssize_t)sizeof(second) &&
+            violin_status_valid(&first, (size_t)a) && !memcmp(&first, &second, sizeof(first))) {
+            valid = 1; break;
+        }
+        usleep(10000);
+    }
+    close(fd);
+    char enforce[16];
+    if (!valid || read_text("/sys/fs/selinux/enforce", enforce, sizeof(enforce)) || strcmp(enforce, "0")) {
+        puts("STOP: SELinux kernel/status mismatch or unreadable; reboot with the updated DFRoot entry module");
+        return -1;
+    }
+    printf("SELinux status synchronized: version=%u sequence=%u enforcing=%u policyload=%u\n",
+        first.version, first.sequence, first.enforcing, first.policyload);
+    return 0;
+}
+static int su_domain_ready(void) {
+    char class_text[32], perm_text[32], request[256], response[256];
+    if (read_text("/sys/fs/selinux/class/service_manager/index", class_text, sizeof(class_text)) ||
+        read_text("/sys/fs/selinux/class/service_manager/perms/find", perm_text, sizeof(perm_text))) return -1;
+    char *end;
+    unsigned long cls = strtoul(class_text, &end, 10);
+    if (!cls || cls > 65535 || *end) return -1;
+    unsigned long perm = strtoul(perm_text, &end, 10);
+    if (!perm || perm > UINT32_MAX || *end) return -1;
+    int size = snprintf(request, sizeof(request), "u:r:su:s0 u:object_r:package_service:s0 %lu %lx", cls, perm);
+    int fd = open("/sys/fs/selinux/access", O_RDWR | O_CLOEXEC);
+    if (fd < 0) return -1;
+    ssize_t written = write(fd, request, (size_t)size);
+    ssize_t n = written == size ? read(fd, response, sizeof(response) - 1) : -1;
+    close(fd);
+    if (n <= 0) return -1;
+    response[n] = 0;
+    unsigned int allowed, decided, auditallow, auditdeny, seqno, flags;
+    char extra;
+    if (sscanf(response, "%x %x %x %x %u %x %c", &allowed, &decided, &auditallow,
+        &auditdeny, &seqno, &flags, &extra) != 6) return -1;
+    printf("su/package_service decision: allowed=%x flags=%x sequence=%u\n", allowed, flags, seqno);
+    return violin_su_permissive(flags) ? 0 : -1;
+}
+static int initialize_su_domain(void) {
+    /* Exact first rule from upstream v3.1.0 apply_kernelsu_rules(), scoped to su.
+     * No wildcard allow rules, changes to other domains, or policy file writes.
+     * ksud 3.1.0 can return zero despite an ioctl failure: verify the live result. */
+    int rc = command((char *[]){KSUD, "sepolicy", "patch", "permissive su", NULL}, NULL, 0, 15);
+    printf("KernelSU su-domain initialization exit=%d\n", rc);
+    if (rc || su_domain_ready() || selinux_synchronized()) {
+        puts("STOP: KernelSU su-domain initialization not verified"); return -1;
+    }
+    const char *services[] = {"package", "activity", "user"};
+    for (size_t i = 0; i < sizeof(services) / sizeof(*services); i++) {
+        char result[256] = {0}, expected[128];
+        int code = command((char *[]){"/system/bin/runcon", "u:r:su:s0", "/system/bin/service",
+            "check", (char *)services[i], NULL}, result, sizeof(result), 5);
+        snprintf(expected, sizeof(expected), "Service %s: found", services[i]);
+        printf("su-context Binder check: %s", result);
+        if (code || strncmp(result, expected, strlen(expected))) return -1;
+    }
+    return 0;
+}
 static int kernel_version(void) {
     char version[256];
     if (command((char *[]){KSUD, "debug", "version", NULL}, version, sizeof(version), 10)) return -1;
@@ -201,7 +270,9 @@ int violin_resume_list(void) {
     if (getuid() != 0 || !violin_device() || uname(&u) || strcmp(u.release, KERNEL) ||
         read_text("/proc/sys/kernel/random/boot_id", boot, sizeof(boot)) ||
         read_text(BASE "/ready.boot", ready, sizeof(ready)) || strcmp(ready, boot) ||
-        !hash_matches(KSUD, KSUD_HASH) || kernel_version() != 32302) return 1;
+        read_text(BASE "/binder-ready.boot", ready, sizeof(ready)) || strcmp(ready, boot) ||
+        !hash_matches(KSUD, KSUD_HASH) || kernel_version() != 32302 ||
+        selinux_synchronized() || su_domain_ready()) return 1;
     list_listener(boot); return 0;
 }
 int violin_bootstrap(void) {
@@ -219,6 +290,7 @@ int violin_bootstrap(void) {
     if (log < 0) return 1;
     dup2(log, STDOUT_FILENO); dup2(log, STDERR_FILENO); close(log);
     setvbuf(stdout, NULL, _IONBF, 0); printf("violin 3.1.0 bootstrap boot=%s\n", boot);
+    if (selinux_synchronized()) return 1;
     int version = kernel_version();
     if (version != 0 && version != 32302) return 1;
     if (version == 0) {
@@ -263,13 +335,14 @@ int violin_bootstrap(void) {
         /* Preserve the first backup; never overwrite a prior run's backup. */
         if (access(logpath, F_OK) && copy_file("/data/adb/ksud", logpath)) return 1;
     }
+    if (initialize_su_domain()) return 1;
     const char *stages[] = {"install", "post-fs-data", "services", "boot-completed"};
     for (size_t i = 0; i < sizeof(stages) / sizeof(*stages); i++) {
         int rc = command((char *[]){KSUD, (char *)stages[i], NULL}, NULL, 0, 60);
         printf("ksud %s exit=%d\n", stages[i], rc); if (rc) return 1;
     }
     if (refresh_manager()) { puts("STOP: manager package refresh failed"); return 1; }
-    if (write_text(BASE "/ready.boot", boot)) return 1;
+    if (write_text(BASE "/binder-ready.boot", boot) || write_text(BASE "/ready.boot", boot)) return 1;
     list_listener(boot);
     puts("KernelSU 32302 ready; open manager, repair list, then authorize apps");
     return 0;

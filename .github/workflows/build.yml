@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test strict ELF patcher
+      - name: Test ELF rejection and SELinux status validation
         run: python3 -m unittest discover -s tests -v
       - name: Check bootstrap C sources
         run: cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -fsyntax-only app/src/main/jni/bootstrap.c app/src/main/jni/violin.c app/src/main/jni/violin_patch.c
