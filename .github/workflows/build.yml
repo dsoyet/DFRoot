@@ -109,8 +109,18 @@ jobs:
       - name: Preserve debug signing identity for subsequent builds
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: violin-debug-keystore-v1
+          path: .debug-signing/debug.keystore
+          key: violin-debug-keystore-v2
+
+      - name: Prepare debug signing key
+        run: |
+          mkdir -p .debug-signing
+          if [ ! -f .debug-signing/debug.keystore ]; then
+            keytool -genkeypair -keystore .debug-signing/debug.keystore \
+              -storepass android -keypass android -alias androiddebugkey \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+          fi
 
       - uses: android-actions/setup-android@v3
         with:

@@ -30,6 +30,9 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file(".debug-signing/debug.keystore")
+        }
         create("release") {
             if (signingPropsFile.exists()) {
                 storeFile = file(signingProps.getProperty("KEYSTORE_FILE"))
