@@ -38,7 +38,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore compiled bootstrap module
+        id: lkm-cache
+        uses: actions/cache@v4
+        with:
+          path: out/dfroot-${{ matrix.kmi }}.ko
+          key: dfroot-lkm-${{ matrix.kmi }}-ddk20260828-${{ hashFiles('lkm/dfroot.c', 'lkm/Makefile') }}
+
       - name: Build dfroot.ko
+        if: steps.lkm-cache.outputs.cache-hit != 'true'
         run: |
           cd lkm
           make -j$(nproc)
@@ -99,6 +107,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Install Android build tools
         run: sdkmanager "platforms;android-37" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
