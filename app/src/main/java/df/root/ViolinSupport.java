@@ -77,7 +77,9 @@ final class ViolinSupport {
         // Native list loading now works under the complete root-domain baseline.
         // Keep the compatibility code for diagnosis, but do not launch a shell-
         // context nsenter helper when global Enforcing is active.
-        if ("1".equals(read(new File("/sys/fs/selinux/enforce")))) {
+        // Ordinary app domains cannot read selinuxfs under Enforcing. Trust the
+        // current-boot marker written only after the native guarded health check.
+        if (boot.equals(read(new File(directory(context), "enforcing-ready.boot")))) {
             openManager(context);
             return;
         }
