@@ -138,11 +138,35 @@ static int health(violin_run_command run) {
     char output[512] = {0};
     if (run((char *[]){"/system/bin/cmd", "package", "path", "android", NULL}, output, sizeof(output), 8) ||
         strncmp(output, "package:", 8)) return -1;
-    /* UID 0 in an ordinary app domain must still be denied access to adb data.
-     * A failed runcon is not accepted as proof: check its diagnostic text. */
-    int rc = run((char *[]){"/system/bin/runcon", "u:r:untrusted_app:s0", "/system/bin/sh", "-c",
-        "cat /proc/self/attr/current; head -c 1 /data/adb/ksud", NULL}, output, sizeof(output), 5);
-    if (!rc || rc == 127 || strncmp(output, "u:r:untrusted_app:s0", 20)) return -1;
+    /* A native child changes its own context, verifies it, and attempts a real
+     * read: do not depend on app-domain permission to exec shell_exec. */
+    int control = open("/data/adb/ksud", O_RDONLY | O_CLOEXEC);
+    if (control < 0) return -1;
+    char byte;
+    ssize_t readable = read(control, &byte, 1); close(control);
+    if (readable != 1) return -1;
+    pid_t canary = fork();
+    if (canary < 0) return -1;
+    if (!canary) {
+        const char *app = "u:r:untrusted_app:s0";
+        int attr = open("/proc/self/attr/current", O_WRONLY | O_CLOEXEC);
+        if (attr < 0 || write(attr, app, strlen(app)) != (ssize_t)strlen(app)) _exit(2);
+        close(attr);
+        char label[128] = {0};
+        attr = open("/proc/self/attr/current", O_RDONLY | O_CLOEXEC);
+        if (attr < 0 || read(attr, label, sizeof(label) - 1) <= 0) _exit(2);
+        close(attr);
+        if (getuid() != 0 || strcmp(label, app)) _exit(2);
+        int denied = open("/data/adb/ksud", O_RDONLY | O_CLOEXEC);
+        if (denied >= 0) { close(denied); _exit(1); }
+        _exit(errno == EACCES || errno == EPERM ? 0 : 2);
+    }
+    int result = 0; pid_t waited;
+    do { waited = waitpid(canary, &result, 0); } while (waited < 0 && errno == EINTR);
+    if (waited != canary || !WIFEXITED(result) || WEXITSTATUS(result)) {
+        printf("Enforcing native canary failed: status=%d\n", result); return -1;
+    }
+    puts("Enforcing native canary: UID 0/untrusted_app denied adb data; su control read succeeded");
     return synchronized_mode(1);
 }
 int violin_restore_enforcing(const char *ksud, violin_run_command run) {
