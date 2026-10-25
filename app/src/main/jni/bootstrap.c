@@ -194,8 +194,13 @@ static int disable_modules(void)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--violin-list")) {
+        if (adopt_zygote_env()) return 1;
+        return violin_resume_list();
+    }
+    if (argc != 1) return 1;
     touch("/dev/dfm1");
     char su_manager[256];
     int soft_reboot, disable_mods;

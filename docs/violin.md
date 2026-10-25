@@ -35,8 +35,9 @@ the violin code path disables it, along with soft reboot and partition changes.
 
 The list helper accepts only a fixed repair request from DFRoot's private data
 directory. It performs no arbitrary requested command and exits after its
-bounded 30-minute session. If it has expired, do not trigger the exploit or load
-the module again merely to repair the UI. Save logs and report the condition.
+bounded 30-minute session. Authorize DFRoot itself in KernelSU after the first
+successful recovery: the Repair button can then use that normal authorization
+to restart an expired list helper, without an exploit or module reload.
 
 ## Reboot and factory reset
 

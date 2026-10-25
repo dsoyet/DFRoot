@@ -69,8 +69,27 @@ final class ViolinSupport {
     static void repairList(Context context) throws Exception {
         validateManager(context, MANAGER);
         String boot = read(new File("/proc/sys/kernel/random/boot_id"));
-        if (!ready(context) || !boot.equals(read(new File(directory(context), "listener.boot"))))
-            throw new IllegalStateException("List helper is not ready. Do not rerun the exploit this boot; inspect logs");
+        if (!ready(context)) throw new IllegalStateException("No successful recovery for this boot. Do not repeat module loading");
+        boolean listenerReady;
+        try { listenerReady = boot.equals(read(new File(directory(context), "listener.boot"))); }
+        catch (Exception e) { listenerReady = false; }
+        if (!listenerReady) {
+            String binary = new File(context.getApplicationInfo().nativeLibraryDir, "libbootstrap.so").getAbsolutePath();
+            String quoted = "'" + binary.replace("'", "'\\''") + "' --violin-list";
+            Process process = new ProcessBuilder("su", "-c", quoted).redirectErrorStream(true).start();
+            if (!process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly(); throw new IllegalStateException("Timed out starting list helper");
+            }
+            if (process.exitValue() != 0)
+                throw new IllegalStateException("Authorize DFRoot in KernelSU to restart the expired list helper");
+            for (int i = 0; i < 20; i++) {
+                try { if (boot.equals(read(new File(directory(context), "listener.boot")))) break; }
+                catch (Exception ignored) { }
+                Thread.sleep(50);
+            }
+            if (!boot.equals(read(new File(directory(context), "listener.boot"))))
+                throw new IllegalStateException("List helper did not become ready");
+        }
         File request = new File(directory(context), "list.request");
         try (FileOutputStream out = new FileOutputStream(request)) { out.write(boot.getBytes(StandardCharsets.UTF_8)); }
         request.setReadable(false, false); request.setReadable(true, true);

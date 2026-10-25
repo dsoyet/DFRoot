@@ -178,6 +178,14 @@ static void list_listener(const char *boot) {
     }
     write_text(BASE "/listener.boot", "stopped"); close(lock); _exit(0);
 }
+int violin_resume_list(void) {
+    char boot[64], ready[64]; struct utsname u;
+    if (getuid() != 0 || !violin_device() || uname(&u) || strcmp(u.release, KERNEL) ||
+        read_text("/proc/sys/kernel/random/boot_id", boot, sizeof(boot)) ||
+        read_text(BASE "/ready.boot", ready, sizeof(ready)) || strcmp(ready, boot) ||
+        !hash_matches(KSUD, KSUD_HASH) || kernel_version() != 32302) return 1;
+    list_listener(boot); return 0;
+}
 int violin_bootstrap(void) {
     struct utsname u; char boot[64], path[512], kptr[32], same_boot[64];
     if (getuid() != 0 || uname(&u) || strcmp(u.release, KERNEL) || strcmp(u.machine, "aarch64") ||

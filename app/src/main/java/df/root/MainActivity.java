@@ -67,10 +67,14 @@ public class MainActivity extends Activity implements IReporter {
         repair.setVisibility(ViolinSupport.isViolin() ? View.VISIBLE : View.GONE);
         logs.setVisibility(ViolinSupport.isViolin() ? View.VISIBLE : View.GONE);
         repair.setOnClickListener(v -> {
-            try {
-                ViolinSupport.repairList(mDeCtx);
-                Toast.makeText(this, "Open Superuser within 60 seconds, then authorize the apps you need", Toast.LENGTH_LONG).show();
-            } catch (Exception e) { report("List repair: " + e.getMessage() + "\n"); }
+            repair.setEnabled(false);
+            mExec.execute(() -> {
+                try {
+                    ViolinSupport.repairList(mDeCtx);
+                    mMain.post(() -> Toast.makeText(this, "Open Superuser within 60 seconds, then authorize the apps you need", Toast.LENGTH_LONG).show());
+                } catch (Exception e) { report("List repair: " + e.getMessage() + "\n"); }
+                finally { mMain.post(() -> repair.setEnabled(true)); }
+            });
         });
         logs.setOnClickListener(v -> report(ViolinSupport.logs(mDeCtx)));
         outputScroll = findViewById(R.id.outputScroll);
