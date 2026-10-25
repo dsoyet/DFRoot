@@ -136,15 +136,16 @@ static int health(violin_run_command run) {
         if (rc || strncmp(output, expected, strlen(expected))) return -1;
     }
     char output[512] = {0};
-    if (run((char *[]){"/system/bin/cmd", "package", "path", "android", NULL}, output, sizeof(output), 8) ||
-        strncmp(output, "package:", 8)) return -1;
+    int rc = run((char *[]){"/system/bin/cmd", "package", "path", "android", NULL}, output, sizeof(output), 8);
+    printf("Enforcing package command: exit=%d output=%s\n", rc, output);
+    if (rc || strncmp(output, "package:", 8)) return -1;
     /* A native child changes its own context, verifies it, and attempts a real
      * read: do not depend on app-domain permission to exec shell_exec. */
     int control = open("/data/adb/ksud", O_RDONLY | O_CLOEXEC);
-    if (control < 0) return -1;
+    if (control < 0) { printf("Enforcing su control open failed: errno=%d\n", errno); return -1; }
     char byte;
     ssize_t readable = read(control, &byte, 1); close(control);
-    if (readable != 1) return -1;
+    if (readable != 1) { printf("Enforcing su control read failed: bytes=%zd\n", readable); return -1; }
     pid_t canary = fork();
     if (canary < 0) return -1;
     if (!canary) {

@@ -37,7 +37,16 @@ static int command(char *const args[], char *output, size_t capacity, int second
     pid_t pid = fork();
     if (pid == 0) {
         setsid(); close(pipes[0]);
-        if (output) dup2(pipes[1], STDOUT_FILENO);
+        if (output) {
+            /* cmd passes all three FDs through Binder. The bootstrap log was
+             * opened in toolbox before we entered su: inheriting that stderr
+             * makes system_server reject the transaction under Enforcing.
+             * Create all command FDs in the current context, including stdin. */
+            int input = open("/dev/null", O_RDONLY | O_CLOEXEC);
+            if (input < 0 || dup2(input, STDIN_FILENO) < 0 ||
+                dup2(pipes[1], STDOUT_FILENO) < 0 || dup2(pipes[1], STDERR_FILENO) < 0) _exit(126);
+            if (input != STDIN_FILENO) close(input);
+        }
         close(pipes[1]); execv(args[0], args); _exit(127);
     }
     close(pipes[1]);
